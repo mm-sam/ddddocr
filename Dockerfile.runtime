@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+
+# ddddocr 可執行映像（linux/amd64）。
+# 第一階段在 Alpine 上編譯 musl 靜態二進位，使用預設 features（inline-model），
+# 因此模型會內嵌進二進位，最終映像不需要 model/ 目錄。
+# 使用 musl 靜態連結可讓 runtime 映像保持最小（alpine 基底即可）。
+
+FROM rust:1.90.0-alpine AS builder
+
+# 沿用既有 Dockerfile 的編譯依賴（musl + onnxruntime 靜態連結所需）
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    perl \
+    make \
+    cmake \
+    linux-headers \
+    git \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig
+
+WORKDIR /app
+
+# 只複製編譯必要檔案；.dockerignore 已排除其餘內容
+COPY Cargo.toml ./
+COPY src ./src
+COPY model ./model
+COPY initialize.json list.json ./
+
+# 預設 features = inline-model + download-binaries，產出 x86_64 musl 二進位
+# 沒有提交 Cargo.lock，最新解析出的 mime-infer 4.1.0 需要 rustc 1.95；
+# 先釘回相容版本，避免 rust:1.90.0 建置失敗。
+RUN cargo update -p mime-infer --precise 4.0.1
+RUN cargo build --release --target x86_64-unknown-linux-musl \
+ && strip --strip-debug target/x86_64-unknown-linux-musl/release/ddddocr
+
+FROM alpine:3.22
+
+# ca-certificates/tzdata 供 TLS 與時區使用；libgcc/libstdc++ 以防仍有動態相依
+RUN apk add --no-cache ca-certificates tzdata libgcc libstdc++
+
+# 以非 root 使用者執行服務，降低容器逃逸風險
+RUN adduser -D -u 10001 ddddocr
+
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/ddddocr /usr/local/bin/ddddocr
+
+USER ddddocr
+
+ENV RUST_LOG=info
+EXPOSE 8000
+
+# 以 busybox wget 探測 /status，失敗即 unhealthy
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
+  CMD wget -qO- http://127.0.0.1:8000/status >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/ddddocr"]
+# 預設啟用 ocr、det、slide 與 MCP（--ocr 與 --old 互斥、--mcp 與 --only-mcp 互斥）
+CMD ["--ocr", "--det", "--slide", "--mcp"]

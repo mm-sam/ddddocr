@@ -61,6 +61,10 @@ a simple OCR API server, very easy to deploy。
   - [MCP 协议支持](#mcp-协议支持)
     - [工具调用请求](#工具调用请求)
     - [工具调用响应](#工具调用响应)
+- [Docker 部署](#docker-部署)
+  - [拉取与启动](#拉取与启动)
+  - [启动参数](#启动参数)
+  - [平台与标签](#平台与标签)
 - [疑难杂症](#疑难杂症)
 
 # 环境支持
@@ -433,6 +437,50 @@ ddddocr.exe --help
   }
 }
 ```
+
+# Docker 部署
+
+官方提供了可直接运行的 `linux/amd64` 镜像 [mmhk/ddddocr](https://hub.docker.com/r/mmhk/ddddocr)。镜像内是 musl 静态链接的二进制，模型已内嵌，运行时不依赖 `model/` 目录。
+
+## 拉取与启动
+
+```sh
+docker pull mmhk/ddddocr:latest
+
+docker run -d --name ddddocr -p 8000:8000 mmhk/ddddocr:latest
+```
+
+启动后验证服务是否正常：
+
+```sh
+curl http://127.0.0.1:8000/status
+```
+
+## 启动参数
+
+镜像默认以 `--ocr --det --slide --mcp` 启动，即同时开启内容识别、目标检测、滑块匹配与 MCP 协议。
+
+传入的参数会覆盖默认 `CMD`。例如只开启内容识别、目标检测和滑块匹配：
+
+```sh
+docker run --rm -p 8000:8000 mmhk/ddddocr:latest --ocr --det --slide
+```
+
+只开启 MCP 协议（此时仅注册 `/status` 与 `/mcp` 路由）：
+
+```sh
+docker run --rm -p 8000:8000 mmhk/ddddocr:latest --only-mcp
+```
+
+其他参数（`--address`、`--ocr-charset-range`、`--acme` 等）与本地运行完全一致，可参考[运行方式](#运行方式)。
+
+## 平台与标签
+
+- 镜像只提供 `linux/amd64`。Apple Silicon（M1/M2/M3 等）会以模拟方式运行，速度较慢。
+- 标签规则：`latest` 指向最新发布版本，同时提供版本号标签。例如发布 `v1.2.3` 后，可以使用 `mmhk/ddddocr:1.2.3` 和 `mmhk/ddddocr:1.2`。
+- 镜像由 GitHub Actions 在推送 `v*` 标签时自动构建并发布到 Docker Hub；手动触发 workflow 仍然只构建各平台二进制压缩包，不发布镜像。
+
+> 注意：仓库根目录的 `Dockerfile` 只是 musl **编译**环境（`rust:1.90.0-alpine`，用完即弃），不是可直接运行的服务镜像。可直接运行的服务镜像定义在 `Dockerfile.runtime`。
 
 # 疑难杂症
 

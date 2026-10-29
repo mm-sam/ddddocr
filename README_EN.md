@@ -61,6 +61,10 @@ An easy-to-use general-purpose verification code recognition rust library
   - [MCP Protocol Support](#mcp-protocol-support)
     - [Tool Invocation Request](#tool-invocation-request)
     - [Tool Call Response](#tool-call-response)
+- [Docker Deployment](#docker-deployment)
+  - [Pull and Run](#pull-and-run)
+  - [Startup Arguments](#startup-arguments)
+  - [Platform and Tags](#platform-and-tags)
 - [Difficult and complicated cases](#difficult-and-complicated-cases)
 
 # Environment Support
@@ -433,6 +437,50 @@ Methods: `initialize` `tools/list` `tools/call`
     }
 }
 ```
+
+# Docker Deployment
+
+An official `linux/amd64` image is available at [mmhk/ddddocr](https://hub.docker.com/r/mmhk/ddddocr). The image contains a statically linked musl binary with the models embedded, so it does not depend on the `model/` directory at runtime.
+
+## Pull and Run
+
+```sh
+docker pull mmhk/ddddocr:latest
+
+docker run -d --name ddddocr -p 8000:8000 mmhk/ddddocr:latest
+```
+
+Check that the service is running:
+
+```sh
+curl http://127.0.0.1:8000/status
+```
+
+## Startup Arguments
+
+The image starts with `--ocr --det --slide --mcp` by default, enabling content recognition, object detection, slider matching and the MCP protocol at the same time.
+
+Arguments you pass replace the default `CMD`. For example, to enable only content recognition, object detection and slider matching:
+
+```sh
+docker run --rm -p 8000:8000 mmhk/ddddocr:latest --ocr --det --slide
+```
+
+To enable only the MCP protocol (only the `/status` and `/mcp` routes are registered):
+
+```sh
+docker run --rm -p 8000:8000 mmhk/ddddocr:latest --only-mcp
+```
+
+Other arguments (`--address`, `--ocr-charset-range`, `--acme`, etc.) work exactly as when running locally; see [Running method](#running-method).
+
+## Platform and Tags
+
+- The image is only published for `linux/amd64`. On Apple Silicon (M1/M2/M3, etc.) it runs under emulation and is slower.
+- Tag rules: `latest` points to the newest release, and version tags are published as well. For example, after releasing `v1.2.3`, both `mmhk/ddddocr:1.2.3` and `mmhk/ddddocr:1.2` are available.
+- Images are built and pushed to Docker Hub by GitHub Actions when a `v*` tag is pushed; manually triggered workflows still only build the binary archives for each platform and do not publish images.
+
+> Note: the `Dockerfile` in the repository root is only a musl **build** environment (`rust:1.90.0-alpine`, discarded after use), not a runnable service image. The runnable service image is defined in `Dockerfile.runtime`.
 
 # Difficult and complicated cases
 

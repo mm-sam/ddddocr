@@ -1,5 +1,25 @@
+# Rust 构建产物
 /target
+/target/
+/ddddocr-dll/target
+
+# 刻意不提交 Cargo.lock（构建时重新解析，避免锁定 ort git 依赖）
 /Cargo.lock
+
+# 测试/脚本在仓库根目录产生的输出图片
 /*.png
 /*.jpg
-/ddddocr-dll/target
+/*.jpeg
+
+# 本地环境与日志
+.env
+.env.*
+*.log
+
+# 编辑器与操作系统杂项
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.swp
