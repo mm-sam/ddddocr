@@ -13,6 +13,9 @@ a simple OCR API server, very easy to deploy.
 [![Forks][forks-shield]](https://github.com/86maid/ddddocr)
 [![Stargazers][stars-shield]](https://github.com/86maid/ddddocr)
 [![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/86maid/ddddocr/blob/master/LICENSE)
+[![Docker Image Version](https://img.shields.io/docker/v/mmhk/ddddocr?sort=semver&style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/mmhk/ddddocr?style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
+[![Docker Image Size](https://img.shields.io/docker/image-size/mmhk/ddddocr?style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
 
 [forks-shield]: https://img.shields.io/github/forks/86maid/ddddocr?style=flat-square
 [stars-shield]: https://img.shields.io/github/stars/86maid/ddddocr?style=flat-square
@@ -57,12 +60,14 @@ An easy-to-use general-purpose verification code recognition rust library
   - [Running method](#running-method)
   - [Running Examples](#running-examples)
   - [API Documentation](#api-documentation)
+  - [Swagger UI and OpenAPI Spec](#swagger-ui-and-openapi-spec)
   - [API test examples, see the `test_api.py` file for complete tests](#api-test-examples-see-the-test_apipy-file-for-complete-tests)
   - [MCP Protocol Support](#mcp-protocol-support)
     - [Tool Invocation Request](#tool-invocation-request)
     - [Tool Call Response](#tool-call-response)
 - [Docker Deployment](#docker-deployment)
   - [Pull and Run](#pull-and-run)
+  - [Start with Docker Compose](#start-with-docker-compose)
   - [Startup Arguments](#startup-arguments)
   - [Platform and Tags](#platform-and-tags)
 - [Difficult and complicated cases](#difficult-and-complicated-cases)
@@ -377,10 +382,24 @@ ddddocr.exe --help
 | ------------------- | ------ | --------------------------- |
 | `/ocr`              | POST   | Perform OCR recognition     |
 | `/det`              | POST   | Perform object detection    |
-| `/slide-match`      | POST   | Slider matching algorithm   |
-| `/slide-comparison` | POST   | Slider comparison algorithm |
+| `/slide_match`      | POST   | Slider matching algorithm   |
+| `/slide_comparison` | POST   | Slider comparison algorithm |
 | `/status`           | GET    | Get current service status  |
 | `/docs`             | GET    | Swagger UI documentation    |
+| `/docs.json`        | GET    | OpenAPI JSON description    |
+| `/mcp`              | POST   | MCP protocol (JSON-RPC)     |
+
+### Swagger UI and OpenAPI Spec
+
+After starting the service, Swagger UI is available at `http://127.0.0.1:8000/docs`, where you can send requests with **Try it out** directly from the browser. The OpenAPI description is served at `http://127.0.0.1:8000/docs.json`; you can import it into Postman / Apifox or use it to generate a client SDK.
+
+Request notes:
+
+- Send requests with `Content-Type: application/json`.
+- All image fields (`image`, `target_image`, `background_image`) are **raw base64 strings**; do not add the `data:image/png;base64,` prefix.
+- Responses share one envelope, `{"code":200,"msg":"success","data":{...}}`, and errors use the same shape. For example, a body missing a required field returns `{"code":400,"msg":"...missing field ...","data":null}`.
+- The document only lists routes for the features **enabled at startup**. With the default `--ocr --det --slide --mcp`, the OpenAPI spec contains `/ocr`, `/det`, `/slide_match`, `/slide_comparison` and `/status`. With `--only-mcp` the service only has the `/status` and `/mcp` routes, so the OpenAPI spec only shows `/status` (`/mcp` is a JSON-RPC endpoint and is not described by OpenAPI). Routes for disabled features return 404.
+- Quick health check: `curl http://127.0.0.1:8000/status`.
 
 ## API test examples, see the `test_api.py` file for complete tests
 
@@ -407,17 +426,17 @@ curl -X POST "http://127.0.0.1:8000/det"
 
 {"code":200,"msg":"success","data":{"bboxes":[[80,3,98,21],[56,6,76,25],[31,7,51,26],[2,2,21,22],[100,0,127,18]]}}
 
---> 200 POST /slide-match
+--> 200 POST /slide_match
 
-curl -X POST "http://127.0.0.1:8000/slide-match"
+curl -X POST "http://127.0.0.1:8000/slide_match"
 -H "Content-Type: application/json"
 -d '{"target_image": "base64 image", "background_image": "base64 image", "simple_target": true}'
 
 {"code":200,"msg":"success","data":{"target":[215,45,261,91],"target_x":0,"target_y":45}}
 
---> 200 POST /slide-comparison
+--> 200 POST /slide_comparison
 
-curl -X POST "http://127.0.0.1:8000/slide-comparison"
+curl -X POST "http://127.0.0.1:8000/slide_comparison"
 -H "Content-Type: application/json"
 -d '{"target_image": "base64 image", "background_image": "base64 image"}'
 
@@ -480,6 +499,49 @@ Check that the service is running:
 
 ```sh
 curl http://127.0.0.1:8000/status
+```
+
+## Start with Docker Compose
+
+The repository root already contains a `docker-compose.yml`, so you can use it directly:
+
+```sh
+docker compose up -d        # start in the background
+docker compose ps           # show status
+curl http://127.0.0.1:8000/status   # quick health check
+docker compose logs -f      # follow logs
+docker compose down         # stop and remove the container
+```
+
+Upgrade to the latest image:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+Key points of the compose file:
+
+- `image: mmhk/ddddocr:latest` — use the official image, no local build needed.
+- `platform: linux/amd64` — the official image is only published for this architecture; Apple Silicon runs it under emulation.
+- `restart: unless-stopped` — restart automatically after a crash or host reboot.
+- `ports: 8000:8000` — map the container port to the host.
+- `RUST_LOG: info` — log level for `tracing`.
+- `command` overrides the image default `--ocr --det --slide --mcp`; for example `["--only-mcp"]` keeps only MCP.
+
+A trimmed snippet:
+
+```yaml
+services:
+  ddddocr:
+    image: mmhk/ddddocr:latest
+    container_name: ddddocr
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      RUST_LOG: info
+    # command: ["--only-mcp"]
 ```
 
 ## Startup Arguments

@@ -13,6 +13,9 @@ a simple OCR API server, very easy to deploy。
 [![Forks][forks-shield]](https://github.com/86maid/ddddocr)
 [![Stargazers][stars-shield]](https://github.com/86maid/ddddocr)
 [![Apache](https://img.shields.io/badge/license-Apache-blue.svg)](https://github.com/86maid/ddddocr/blob/master/LICENSE)
+[![Docker Image Version](https://img.shields.io/docker/v/mmhk/ddddocr?sort=semver&style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/mmhk/ddddocr?style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
+[![Docker Image Size](https://img.shields.io/docker/image-size/mmhk/ddddocr?style=flat-square)](https://hub.docker.com/r/mmhk/ddddocr)
 
 [forks-shield]: https://img.shields.io/github/forks/86maid/ddddocr?style=flat-square
 [stars-shield]: https://img.shields.io/github/stars/86maid/ddddocr?style=flat-square
@@ -57,12 +60,14 @@ a simple OCR API server, very easy to deploy。
   - [运行方式](#运行方式)
   - [运行例子](#运行例子)
   - [API 说明](#api-说明)
+  - [Swagger UI 与 OpenAPI 文档](#swagger-ui-与-openapi-文档)
   - [API 测试例子，完整的测试请看 `test_api.py` 文件](#api-测试例子完整的测试请看-test_apipy-文件)
   - [MCP 协议支持](#mcp-协议支持)
     - [工具调用请求](#工具调用请求)
     - [工具调用响应](#工具调用响应)
 - [Docker 部署](#docker-部署)
   - [拉取与启动](#拉取与启动)
+  - [使用 Docker Compose 启动](#使用-docker-compose-启动)
   - [启动参数](#启动参数)
   - [平台与标签](#平台与标签)
 - [疑难杂症](#疑难杂症)
@@ -373,14 +378,28 @@ ddddocr.exe --help
 
 ## API 说明
 
-| 端点                | 方法 | 说明             |
-| ------------------- | ---- | ---------------- |
-| `/ocr`              | POST | 执行OCR识别      |
-| `/det`              | POST | 执行目标检测     |
-| `/slide-match`      | POST | 滑块匹配算法     |
-| `/slide-comparison` | POST | 滑块比较算法     |
-| `/status`           | GET  | 获取当前服务状态 |
-| `/docs`             | GET  | Swagger UI 文档  |
+| 端点                | 方法 | 说明               |
+| ------------------- | ---- | ------------------ |
+| `/ocr`              | POST | 执行OCR识别        |
+| `/det`              | POST | 执行目标检测       |
+| `/slide_match`      | POST | 滑块匹配算法       |
+| `/slide_comparison` | POST | 滑块比较算法       |
+| `/status`           | GET  | 获取当前服务状态   |
+| `/docs`             | GET  | Swagger UI 文档    |
+| `/docs.json`        | GET  | OpenAPI JSON 描述  |
+| `/mcp`              | POST | MCP 协议（JSON-RPC） |
+
+### Swagger UI 与 OpenAPI 文档
+
+启动服务后，Swagger UI 位于 `http://127.0.0.1:8000/docs`，可以直接在浏览器里用 **Try it out** 发起请求；OpenAPI 描述位于 `http://127.0.0.1:8000/docs.json`，可以导入 Postman / Apifox，或用于生成 client SDK。
+
+请求要点：
+
+- 请求头使用 `Content-Type: application/json`。
+- 所有图片字段（`image`、`target_image`、`background_image`）都是**原始 base64 字符串**，不要加 `data:image/png;base64,` 前缀。
+- 统一响应格式为 `{"code":200,"msg":"success","data":{...}}`，错误也走同一格式，例如请求体缺少必填字段时返回 `{"code":400,"msg":"...missing field ...","data":null}`。
+- 文档只列出**启动时已开启**功能对应的路由：例如默认以 `--ocr --det --slide --mcp` 启动时，OpenAPI 中包含 `/ocr`、`/det`、`/slide_match`、`/slide_comparison`、`/status`；若以 `--only-mcp` 启动，服务只有 `/status` 与 `/mcp` 两个路由，OpenAPI 中只会看到 `/status`（`/mcp` 是 JSON-RPC 端点，不在 OpenAPI 描述内）。未开启的功能路由会返回 404。
+- 常用快速验证：`curl http://127.0.0.1:8000/status`。
 
 ## API 测试例子，完整的测试请看 `test_api.py` 文件
 
@@ -407,17 +426,17 @@ ddddocr.exe --help
 
   {"code":200,"msg":"success","data":{"bboxes":[[80,3,98,21],[56,6,76,25],[31,7,51,26],[2,2,21,22],[100,0,127,18]]}}
 
---> 200 POST /slide-match
+--> 200 POST /slide_match
 
-  curl -X POST "http://127.0.0.1:8000/slide-match"
+  curl -X POST "http://127.0.0.1:8000/slide_match"
        -H "Content-Type: application/json"
        -d '{"target_image": "base64 image", "background_image": "base64 image", "simple_target": true}'
 
   {"code":200,"msg":"success","data":{"target":[215,45,261,91],"target_x":0,"target_y":45}}
 
---> 200 POST /slide-comparison
+--> 200 POST /slide_comparison
 
-  curl -X POST "http://127.0.0.1:8000/slide-comparison"
+  curl -X POST "http://127.0.0.1:8000/slide_comparison"
        -H "Content-Type: application/json"
        -d '{"target_image": "base64 image", "background_image": "base64 image"}'
 
@@ -480,6 +499,49 @@ docker run -d --name ddddocr -p 8000:8000 mmhk/ddddocr:latest
 
 ```sh
 curl http://127.0.0.1:8000/status
+```
+
+## 使用 Docker Compose 启动
+
+仓库根目录已提供 `docker-compose.yml`，直接使用即可：
+
+```sh
+docker compose up -d        # 后台启动
+docker compose ps           # 查看状态
+curl http://127.0.0.1:8000/status   # 快速探活
+docker compose logs -f      # 查看日志
+docker compose down         # 停止并移除容器
+```
+
+升级到最新镜像：
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+compose 文件要点：
+
+- `image: mmhk/ddddocr:latest`：直接使用官方镜像，无需本地构建。
+- `platform: linux/amd64`：官方镜像只发布该架构；Apple Silicon 会走模拟。
+- `restart: unless-stopped`：异常退出或重启宿主后自动拉起。
+- `ports: 8000:8000`：把容器内监听端口映射到宿主机。
+- `RUST_LOG: info`：日志级别，对应 tracing 的 `RUST_LOG`。
+- `command` 可覆盖镜像默认的 `--ocr --det --slide --mcp`，例如只保留 MCP 时改为 `["--only-mcp"]`。
+
+精简后的片段：
+
+```yaml
+services:
+  ddddocr:
+    image: mmhk/ddddocr:latest
+    container_name: ddddocr
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      RUST_LOG: info
+    # command: ["--only-mcp"]
 ```
 
 ## 启动参数

@@ -1,0 +1,20 @@
+# ddddocr 服務編排（REST + MCP）
+# 使用官方鏡像 mmhk/ddddocr：靜態連結的 musl 二進位，模型已內嵌，不需要掛載 model/。
+# 啟動：docker compose up -d      查看狀態：curl http://127.0.0.1:8000/status
+services:
+  ddddocr:
+    image: mmhk/ddddocr:latest
+    container_name: ddddocr
+    # 官方鏡像只發佈 linux/amd64；Apple Silicon 會走模擬，速度較慢。
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 日誌級別，對應 tracing 的 RUST_LOG。
+      RUST_LOG: info
+    # 鏡像預設 CMD 為 --ocr --det --slide --mcp，需要精簡時取消下面註解。
+    # command: ["--ocr", "--det", "--slide"]      # 不啟用 MCP
+    # command: ["--only-mcp"]                     # 只保留 /status 與 /mcp
+    # command: ["--ocr", "--address", "0.0.0.0:8000"]  # 自訂監聽位址
+    # 鏡像已內建 HEALTHCHECK（busybox wget 探測 /status），此處不重複定義。
