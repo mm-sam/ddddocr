@@ -38,7 +38,7 @@ An easy-to-use general-purpose verification code recognition rust library
 - [Environment Support](#environment-support)
 - [Installation steps](#installation-steps)
   - [If you don't want to build from source code, here is a compiled binary version.](#if-you-dont-want-to-build-from-source-code-here-is-a-compiled-binary-version)
-  - [You can also use the configured Github Action for building.](#you-can-also-use-the-configured-github-action-for-building)
+  - [This repository only publishes Docker images via GitHub Actions](#this-repository-only-publishes-docker-images-via-github-actions)
 - [User Documentation](#user-documentation)
   - [OCR Recognition](#ocr-recognition)
     - [Content Recognition](#content-recognition)
@@ -96,7 +96,9 @@ If you have more questions, please jump to the [Troubleshooting](#疑难杂症) 
 
 ## If you don't want to build from source code, here is a compiled [binary version](https://github.com/86maid/ddddocr/releases).
 
-## You can also use the configured [Github Action](https://github.com/86maid/ddddocr/tree/master/.github/workflows) for building.
+## This repository only publishes Docker images via GitHub Actions
+
+GitHub Actions in this repository only builds and publishes the Docker image (see [Docker Deployment](#docker-deployment)). If you need a binary, build it locally with `cargo build` or use the upstream [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases).
 
 # User Documentation
 
@@ -284,6 +286,30 @@ println!("Recognition confidence: {}", result.get_confidence());
 
 // Oh, it seems there's a bit too much data, be careful of freezing!
 println!("Probability: {}", result.json());
+```
+
+### Expected Character Length (Optional)
+
+When the number of characters is known, you can pass the expected length. If the result is longer than that, the segments with the lowest peak probability are dropped; without this parameter the behavior is unchanged.
+
+```rust
+let image = std::fs::read("image.png").unwrap();
+let ocr = ddddocr::ddddocr_classification().unwrap();
+
+// Specify the length directly
+let text = ocr.classification_with_length(&image, 5).unwrap();
+
+// Or get probabilities first, then decode with a length
+let mut result = ocr.classification_probability(&image).unwrap();
+println!("Recognition result: {}", result.get_text_with_length(5));
+```
+
+The REST `/ocr` endpoint also accepts the optional `length` field:
+
+```sh
+curl -X POST "http://127.0.0.1:8000/ocr" \
+     -H "Content-Type: application/json" \
+     -d '{"image": "base64 image", "length": 5}'
 ```
 
 ## Custom OCR Training Model Import
@@ -478,13 +504,13 @@ Other arguments (`--address`, `--ocr-charset-range`, `--acme`, etc.) work exactl
 
 - The image is only published for `linux/amd64`. On Apple Silicon (M1/M2/M3, etc.) it runs under emulation and is slower.
 - Tag rules: `latest` points to the newest release, and version tags are published as well. For example, after releasing `v1.2.3`, both `mmhk/ddddocr:1.2.3` and `mmhk/ddddocr:1.2` are available.
-- Images are built and pushed to Docker Hub by GitHub Actions when a `v*` tag is pushed; manually triggered workflows still only build the binary archives for each platform and do not publish images.
+- Images are built and pushed to Docker Hub by GitHub Actions when a `v*` tag is pushed (`linux/amd64`, tagged `latest` plus the version number). The workflow has no manual trigger; push a new `v*` tag to publish.
 
 > Note: the `Dockerfile` in the repository root is only a musl **build** environment (`rust:1.90.0-alpine`, discarded after use), not a runnable service image. The runnable service image is defined in `Dockerfile.runtime`.
 
 # Difficult and complicated cases
 
-It is strongly recommended to use [Github Action](https://github.com/86maid/ddddocr/tree/master/.github/workflows) for building.
+GitHub Actions in this fork only publishes the Docker image (see [Docker Deployment](#docker-deployment)); it no longer produces per-platform binaries. If you need a binary, build it locally with `cargo build` or use the upstream [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases).
 
 Regarding the issue of using `cuda`.
 

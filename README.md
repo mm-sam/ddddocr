@@ -38,7 +38,7 @@ a simple OCR API server, very easy to deploy。
 - [环境支持](#环境支持)
 - [安装步骤](#安装步骤)
   - [如果你不想从源代码构建，这里有编译好的二进制版本。](#如果你不想从源代码构建这里有编译好的二进制版本)
-  - [还可以使用配置好的 Github Action 进行构建。](#还可以使用配置好的-github-action-进行构建)
+  - [本仓库只通过 GitHub Actions 发布 Docker 镜像](#本仓库只通过-github-actions-发布-docker-镜像)
 - [使用文档](#使用文档)
   - [OCR 识别](#ocr-识别)
     - [内容识别](#内容识别)
@@ -96,7 +96,9 @@ a simple OCR API server, very easy to deploy。
 
 ## 如果你不想从源代码构建，这里有编译好的[二进制版本](https://github.com/86maid/ddddocr/releases)。
 
-## 还可以使用配置好的 [Github Action](https://github.com/86maid/ddddocr/tree/master/.github/workflows) 进行构建。
+## 本仓库只通过 GitHub Actions 发布 Docker 镜像
+
+本仓库的 GitHub Actions 只负责构建并发布 Docker 镜像（见 [Docker 部署](#docker-部署)）；如需二进制，请本地 `cargo build` 或使用上游 [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases)。
 
 # 使用文档
 
@@ -284,6 +286,30 @@ println!("识别可信度: {}", result.get_confidence());
 
 // 哦呀，看来数据有点儿太多了，小心卡死哦！
 println!("概率: {}", result.json());
+```
+
+### 指定字符长度（可选）
+
+验证码字数已知时，可以指定期望长度。识别结果超过该长度时，会依片段峰值概率由低到高丢弃多余片段；未指定时行为不变。
+
+```rust
+let image = std::fs::read("image.png").unwrap();
+let ocr = ddddocr::ddddocr_classification().unwrap();
+
+// 直接指定长度
+let text = ocr.classification_with_length(&image, 5).unwrap();
+
+// 或者先取概率，再按长度解码
+let mut result = ocr.classification_probability(&image).unwrap();
+println!("识别结果: {}", result.get_text_with_length(5));
+```
+
+REST 的 `/ocr` 同样支持选填字段 `length`：
+
+```sh
+curl -X POST "http://127.0.0.1:8000/ocr" \
+     -H "Content-Type: application/json" \
+     -d '{"image": "base64 image", "length": 5}'
 ```
 
 ## 自定义 OCR 训练模型导入
@@ -478,13 +504,13 @@ docker run --rm -p 8000:8000 mmhk/ddddocr:latest --only-mcp
 
 - 镜像只提供 `linux/amd64`。Apple Silicon（M1/M2/M3 等）会以模拟方式运行，速度较慢。
 - 标签规则：`latest` 指向最新发布版本，同时提供版本号标签。例如发布 `v1.2.3` 后，可以使用 `mmhk/ddddocr:1.2.3` 和 `mmhk/ddddocr:1.2`。
-- 镜像由 GitHub Actions 在推送 `v*` 标签时自动构建并发布到 Docker Hub；手动触发 workflow 仍然只构建各平台二进制压缩包，不发布镜像。
+- 镜像由 GitHub Actions 在推送 `v*` 标签时自动构建并发布到 Docker Hub（`linux/amd64`，标签为 `latest` 与版本号）。工作流没有手动触发入口，需要发布时请推送新的 `v*` 标签。
 
 > 注意：仓库根目录的 `Dockerfile` 只是 musl **编译**环境（`rust:1.90.0-alpine`，用完即弃），不是可直接运行的服务镜像。可直接运行的服务镜像定义在 `Dockerfile.runtime`。
 
 # 疑难杂症
 
-强烈推荐用 [Github Action](https://github.com/86maid/ddddocr/tree/master/.github/workflows) 进行构建。
+本 fork 的 GitHub Actions 只发布 Docker 镜像（见 [Docker 部署](#docker-部署)），不再产出各平台二进制；如需二进制，请本地 `cargo build` 或使用上游 [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases)。
 
 关于使用 `cuda` 的问题。
 

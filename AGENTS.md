@@ -20,7 +20,7 @@ This file is the working contract for AI agents in this repository. Rules stated
 - Rust 2021, `ort` (ONNX Runtime from a git fork), `ndarray`, `image` + `imageproc`
 - `salvo` 0.85 (HTTP/OpenAPI/ACME), `tokio`, `rmcp` 0.12, `clap`
 - Models in `model/`: `common.onnx` + `common.json`, `common_old.*`, `common_det.onnx`
-- CI: GitHub Actions, manual `workflow_dispatch`, ~14 targets including musl via `Dockerfile`; a separate `docker-image` job runs on `push` tags `v*` and publishes the runtime image to Docker Hub `mmhk/ddddocr`
+- CI: GitHub Actions builds and publishes only the `linux/amd64` Docker image to Docker Hub `mmhk/ddddocr` on `push` tags `v*` (no other build jobs, no binary releases)
 
 ---
 
@@ -45,7 +45,7 @@ This file is the working contract for AI agents in this repository. Rules stated
 ├── list.json             # Static MCP tools/list result (include_str!)
 ├── test_api.py           # Manual REST/MCP smoke script (prints curl; not pytest)
 ├── .agent/skills/ddddocr/ # Packaged agent skill: python scripts + API/MCP references
-├── .github/workflows/build.yml # Manual multi-target build/release + tag-triggered Docker publish
+├── .github/workflows/build.yml # Docker-only workflow (push tags `v*`): single `docker-image` job
 ├── docs/plans/           # Implementation plans ONLY (see §12); no other docs here
 ├── Dockerfile            # musl builder image (rust:1.90.0-alpine); build-only, not a service image
 ├── Dockerfile.runtime    # Runnable runtime image: multi-stage builder → alpine:3.22, inline models
@@ -116,7 +116,7 @@ Rules:
 | Goal | Command |
 |------|---------|
 | Local/standalone binary (models embedded, no `model/` needed) | `cargo build --release` |
-| CI-style model-bundled build (binary + `model/`) | `cargo build --release --no-default-features --features download-binaries` |
+| Model-bundled build (binary + `model/`) | `cargo build --release --no-default-features --features download-binaries` |
 | Library only | `cargo build --lib` |
 | Run server | `cargo run -- --ocr --det --slide --mcp` |
 | Tests | `cargo test --no-default-features --features download-binaries` |
@@ -129,8 +129,7 @@ Rules:
 - With `--no-default-features`, models load from `model/` relative to the process CWD. Run from repo root or ship `model/` next to the binary.
 - `cuda` is dynamic-only and needs CUDA + cuDNN installed (CUDA 12 → cuDNN 9.x). `load-dynamic` needs onnxruntime 1.18.x beside the binary and skips auto-download.
 - onnxruntime is auto-downloaded to `%APPDATA%\ort.pyke.io`; set `ORT_LIB_LOCATION` to use local libs. Static-link failures usually mean missing MSVC 2022 (Windows), gcc/g++ 11 (Linux), or glibc ≥ 2.35 (Linux arm64).
-- CI is manual (`workflow_dispatch`). Non-inline archives include `model/`; inline archives contain only the binary. Release only happens when `publish=true`.
-- A separate `docker-image` job runs on `push` tags `v*` (not on `workflow_dispatch`) and pushes the `linux/amd64` runtime image to Docker Hub `mmhk/ddddocr`, tagged `latest` plus semver (`v1.2.3` → `1.2.3`, `1.2`).
+- CI only has a `docker-image` job triggered by `push` tags `v*`; it builds the `linux/amd64` runtime image and pushes it to Docker Hub `mmhk/ddddocr`, tagged `latest` plus semver (`v1.2.3` → `1.2.3`, `1.2`). There is no manual trigger and no per-platform binary output.
 - Linux musl must be built in the `Dockerfile` image; do not attempt a host musl build.
 - `Dockerfile` is only a musl build environment (discarded after use); `Dockerfile.runtime` is the runnable service image (`alpine:3.22`, static musl binary, inline models, `EXPOSE 8000`, default CMD `--ocr --det --slide --mcp`). Publishing the runtime image needs repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
@@ -211,6 +210,7 @@ User documentation stays in `README.md` / `README_EN.md`; implementation plans g
 | Library API (methods, signatures) | `README.md` code samples (they are stale in places, e.g. examples use `let mut ocr` although methods take `&self`) |
 | Build/feature behavior | `README.md` "疑难杂症", `AGENTS.md` §5 |
 | Docker runtime image / publish behavior | `README.md` (Docker 部署), `README_EN.md` (Docker Deployment), `AGENTS.md` §2/§5 |
+| CI trigger or workflow shape (Docker-only, `push` tags `v*`) | `README.md`, `README_EN.md`, `AGENTS.md` §0/§5 |
 
 Library doc comments are Chinese, one short block per public method; keep that style rather than adding standalone docs.
 
