@@ -61,6 +61,7 @@ An easy-to-use general-purpose verification code recognition rust library
   - [Running Examples](#running-examples)
   - [API Documentation](#api-documentation)
   - [Swagger UI and OpenAPI Spec](#swagger-ui-and-openapi-spec)
+  - [Static Homepage](#static-homepage)
   - [API test examples, see the `test_api.py` file for complete tests](#api-test-examples-see-the-test_apipy-file-for-complete-tests)
   - [MCP Protocol Support](#mcp-protocol-support)
     - [Tool Invocation Request](#tool-invocation-request)
@@ -381,6 +382,7 @@ ddddocr.exe --help
 
 | Endpoint            | Method | Description                 |
 | ------------------- | ------ | --------------------------- |
+| `/`                 | GET    | Static homepage             |
 | `/ocr`              | POST   | Perform OCR recognition     |
 | `/det`              | POST   | Perform object detection    |
 | `/slide_match`      | POST   | Slider matching algorithm   |
@@ -401,6 +403,10 @@ Request notes:
 - Responses share one envelope, `{"code":200,"msg":"success","data":{...}}`, and errors use the same shape. For example, a body missing a required field returns `{"code":400,"msg":"...missing field ...","data":null}`.
 - The document only lists routes for the features **enabled at startup**. With the default `--ocr --det --slide --mcp`, the OpenAPI spec contains `/ocr`, `/det`, `/slide_match`, `/slide_comparison` and `/status`. With `--only-mcp` the service only has the `/status` and `/mcp` routes, so the OpenAPI spec only shows `/status` (`/mcp` is a JSON-RPC endpoint and is not described by OpenAPI). Routes for disabled features return 404.
 - Quick health check: `curl http://127.0.0.1:8000/status`.
+
+### Static Homepage
+
+Visit `http://127.0.0.1:8000/` to see the project homepage with an introduction and API usage examples. The homepage is a static HTML file located at `static/index.html`, styled with TailwindCSS v4, Remix Icon, and Google Fonts (all loaded via CDN).
 
 ## API test examples, see the `test_api.py` file for complete tests
 

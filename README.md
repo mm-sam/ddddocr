@@ -61,6 +61,7 @@ a simple OCR API server, very easy to deploy。
   - [运行例子](#运行例子)
   - [API 说明](#api-说明)
   - [Swagger UI 与 OpenAPI 文档](#swagger-ui-与-openapi-文档)
+  - [静态首页](#静态首页)
   - [API 测试例子，完整的测试请看 `test_api.py` 文件](#api-测试例子完整的测试请看-test_apipy-文件)
   - [MCP 协议支持](#mcp-协议支持)
     - [工具调用请求](#工具调用请求)
@@ -381,6 +382,7 @@ ddddocr.exe --help
 
 | 端点                | 方法 | 说明               |
 | ------------------- | ---- | ------------------ |
+| `/`                 | GET  | 静态首页           |
 | `/ocr`              | POST | 执行OCR识别        |
 | `/det`              | POST | 执行目标检测       |
 | `/slide_match`      | POST | 滑块匹配算法       |
@@ -401,6 +403,10 @@ ddddocr.exe --help
 - 统一响应格式为 `{"code":200,"msg":"success","data":{...}}`，错误也走同一格式，例如请求体缺少必填字段时返回 `{"code":400,"msg":"...missing field ...","data":null}`。
 - 文档只列出**启动时已开启**功能对应的路由：例如默认以 `--ocr --det --slide --mcp` 启动时，OpenAPI 中包含 `/ocr`、`/det`、`/slide_match`、`/slide_comparison`、`/status`；若以 `--only-mcp` 启动，服务只有 `/status` 与 `/mcp` 两个路由，OpenAPI 中只会看到 `/status`（`/mcp` 是 JSON-RPC 端点，不在 OpenAPI 描述内）。未开启的功能路由会返回 404。
 - 常用快速验证：`curl http://127.0.0.1:8000/status`。
+
+### 静态首页
+
+启动服务后，访问 `http://127.0.0.1:8000/` 可以看到项目首页，包含基础介绍和 API 使用示例。首页为静态 HTML 文件，位于 `static/index.html`，使用 TailwindCSS v4、Remix Icon 和 Google Fonts（均通过 CDN 引入）。
 
 ## API 测试例子，完整的测试请看 `test_api.py` 文件
 

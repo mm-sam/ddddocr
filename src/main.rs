@@ -23,6 +23,7 @@ use salvo::http::ReqBody;
 use salvo::http::ResBody;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
+use salvo_serve_static::StaticFile;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -638,6 +639,9 @@ async fn main() {
     }
 
     let mut router = Router::new();
+
+    // 首頁：靜態 HTML
+    router = router.push(Router::with_path("/").get(StaticFile::new("static/index.html")));
 
     router = router
         .hoop(salvo::prelude::Logger::new())

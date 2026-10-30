@@ -41,6 +41,7 @@ This file is the working contract for AI agents in this repository. Rules stated
 ├── src/main.rs           # HTTP + MCP server binary (Salvo, clap, rmcp)
 ├── model/                # ONNX models + charset JSON (tracked, required for non-inline builds)
 ├── image/                # Test fixtures used by lib tests and test_api.py
+├── static/               # Static homepage HTML (served at /)
 ├── initialize.json       # Static MCP initialize result (include_str!)
 ├── list.json             # Static MCP tools/list result (include_str!)
 ├── test_api.py           # Manual REST/MCP smoke script (prints curl; not pytest)
@@ -56,7 +57,7 @@ This file is the working contract for AI agents in this repository. Rules stated
 ```
 
 Rules:
-- **Do not add new top-level directories** other than `docs/plans/` without user approval. User documentation lives in `README.md` / `README_EN.md`.
+- **Do not add new top-level directories** other than `docs/plans/` and `static/` without user approval. User documentation lives in `README.md` / `README_EN.md`.
 - New inference code goes at the bottom of `lib.rs`; new routes/helpers go in `main.rs`.
 - `docs/plans/` is the single permitted location for plan Markdown files (`docs/plans/<task-name>-plan.md`). Do not create `doc/`, `plans/`, `docs/spec.md`, or per-task plan files anywhere else.
 - `model/` and `image/` are inputs, not outputs. Never regenerate or replace them as a side effect of a code change.
@@ -225,6 +226,7 @@ User documentation stays in `README.md` / `README_EN.md`; implementation plans g
 | Docker runtime image / publish behavior | `README.md` (Docker 部署), `README_EN.md` (Docker Deployment), `AGENTS.md` §2/§5 |
 | Dev container config (`Dockerfile.dev`, `docker-compose.dev.yml`) | `AGENTS.md` §2/§5, `README.md` (Docker 部署), `README_EN.md` (Docker Deployment) |
 | CI trigger or workflow shape (Docker-only, `push` tags `v*`) | `README.md`, `README_EN.md`, `AGENTS.md` §0/§5 |
+| Static homepage content | `static/index.html` |
 
 Library doc comments are Chinese, one short block per public method; keep that style rather than adding standalone docs.
 
