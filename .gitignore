@@ -23,6 +23,13 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# 前端工程 (webui) 依赖（yarn；yarn.lock 需要提交）
+/webui/node_modules
+/webui/.yarn/cache
+/webui/.yarn/install-state.gz
+/webui/.yarn/unplugged
+/webui/.pnp.*
+
 # 本地环境与日志
 .env
 .env.*

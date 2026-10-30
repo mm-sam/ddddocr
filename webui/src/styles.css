@@ -1,0 +1,26 @@
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background-color: #dbeafe;
+}
+
+/* 自訂滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}

@@ -408,7 +408,17 @@ Request notes:
 
 Visit `http://127.0.0.1:8000/` to see the project homepage with an introduction and API usage examples. The homepage is a static HTML file located at `static/index.html`, styled with TailwindCSS v4, Remix Icon, and Google Fonts (all loaded via CDN).
 
-When using Docker Compose, `docker-compose.yml` mounts the repository's `static/` directory read-only to `/static` inside the container (the runtime image's working directory is `/`), so the homepage works. Self-hosted images without that mount will return 404 for `/`.
+The homepage source lives in `webui/` (Rspack v2 + Vue 3) and builds into `static/`. To build it:
+
+```sh
+cd webui && yarn install && yarn build
+```
+
+The homepage includes an interactive online OCR area: drop or click to upload a captcha image, or paste one directly on the page (Ctrl+V), and the page calls `POST /ocr` immediately to show the result.
+
+`static/` is build output; do not edit it by hand. Change `webui/src/` and rebuild instead.
+
+Static asset routing: `/assets/*` is served directly by the server (Salvo `StaticDir` rooted at `static/`), alongside the homepage at `static/index.html` (`StaticFile`). When using Docker Compose, `docker-compose.yml` mounts the repository's `static/` directory read-only to `/static` inside the container (the runtime image's working directory is `/`), so both the homepage and `/assets/*` work. Self-hosted images without that mount will return 404 for `/`.
 
 ## API test examples, see the `test_api.py` file for complete tests
 

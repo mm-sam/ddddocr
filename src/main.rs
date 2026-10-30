@@ -23,7 +23,7 @@ use salvo::http::ReqBody;
 use salvo::http::ResBody;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
-use salvo_serve_static::StaticFile;
+use salvo_serve_static::{StaticDir, StaticFile};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -669,7 +669,9 @@ async fn main() {
 
     let router = router
         .unshift(docs.into_router("/docs.json"))
-        .unshift(SwaggerUi::new("/docs.json").into_router("/docs"));
+        .unshift(SwaggerUi::new("/docs.json").into_router("/docs"))
+        // 前端靜態資源（Rspack 建置產物），必須最後註冊，避免萬用字元搶先匹配精確路由
+        .push(Router::with_path("/{**path}").get(StaticDir::new(["static"])));
 
     let service = Service::new(router).catcher(Catcher::default().hoop(default_error_handler));
 

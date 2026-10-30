@@ -408,7 +408,17 @@ ddddocr.exe --help
 
 启动服务后，访问 `http://127.0.0.1:8000/` 可以看到项目首页，包含基础介绍和 API 使用示例。首页为静态 HTML 文件，位于 `static/index.html`，使用 TailwindCSS v4、Remix Icon 和 Google Fonts（均通过 CDN 引入）。
 
-使用 Docker Compose 时，`docker-compose.yml` 会把仓库的 `static/` 以只读方式挂载到容器内的 `/static`（runtime 镜像的工作目录是 `/`），因此首页能正常访问；若自行部署镜像而缺少该挂载，首页 `/` 会返回 404。
+首页源码在 `webui/`（Rspack v2 + Vue 3），建置产物输出到 `static/`。建置方式：
+
+```sh
+cd webui && yarn install && yarn build
+```
+
+首页含在线 OCR 互动区：可以拖放或点击上传验证码图片，也可以直接在页面上粘贴（Ctrl+V）图片，页面会即时调用 `POST /ocr` 并显示识别结果。
+
+`static/` 是建置产物，不要手动修改；要改内容请修改 `webui/src/` 后再重新建置。
+
+静态资源路由：`/assets/*` 由服务器直接提供（Salvo `StaticDir` 以 `static/` 为根目录），与首页 `static/index.html`（`StaticFile`）配合。使用 Docker Compose 时，`docker-compose.yml` 会把仓库的 `static/` 以只读方式挂载到容器内的 `/static`（runtime 镜像的工作目录是 `/`），因此首页与 `/assets/*` 都能正常访问；若自行部署镜像而缺少该挂载，首页 `/` 会返回 404。
 
 ## API 测试例子，完整的测试请看 `test_api.py` 文件
 

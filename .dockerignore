@@ -22,6 +22,10 @@ README*
 AGENTS.md
 *.md
 
+# 前端源码（Rspack + Vue），builder 不编译 webui；建置产物 static/ 仍保留在 build context
+webui
+node_modules
+
 # Python 本地环境（test_api.py 只在主机跑）
 __pycache__
 *.py[cod]
