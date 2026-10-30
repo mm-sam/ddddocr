@@ -161,7 +161,9 @@ Rules:
 color filter → decode → resize (Lanczos3; `charset.image[0] == -1` means keep aspect and fix height) → channel selection (`1` = luma, else RGB; `png_fix` fills transparent pixels white) → normalize (official: `(x/255 - 0.5)/0.5` on channel 0; custom: ImageNet mean/std per channel) → `session.run` → decode:
 - `charset.word == true` → argmax char sequence from output `[1]`
 - custom model → dedupe consecutive/zero indices from output `[0]`
-- official line model → argmax per row with dedupe, then strip blanks
+- official line model → per-row argmax, then CTC decode: a run of identical labels collapses to one character and blank breaks the run. `decode_probability` builds `ctc` / `no_collapse` / `global_dedup` candidates and picks the highest length-normalized log score; on a tie the earlier (CTC) candidate wins
+
+The optional `length` prior (`classification_with_length*`, REST `length`, MCP `length`) only affects the official line-model branch: each candidate longer than `length` first drops its lowest-peak segments (keeping order), then scoring is unchanged. Without `length` the decode is identical to the CTC behavior above.
 
 `classification_probability*` only works on official models (panics on `diy`) and adds a softmax + charset-range projection; unknown range chars get probability `-1.0`.
 

@@ -39,7 +39,8 @@ Perform optical character recognition on an image.
 {
   "image": "base64_encoded_image",
   "color_filter": "green",
-  "charset_range": "0123456789+-x/="
+  "charset_range": "0123456789+-x/=",
+  "length": 5
 }
 ```
 
@@ -47,6 +48,7 @@ Perform optical character recognition on an image.
 - `image` (required): Base64 encoded image data
 - `color_filter` (optional): Color filter to apply. Presets: red, blue, green, yellow, orange, purple, cyan, black, white, gray. Can also use HSV ranges.
 - `charset_range` (optional): Character range for recognition. Values 0-7 for built-in ranges, or custom string (e.g., "0123456789+-x/=")
+- `length` (optional): Expected number of characters. When the result is longer than this, the segments with the lowest peak probability are dropped. Omit to keep the default behavior.
 - `simple_target` (optional): For simple slide matching
 
 **Response:**

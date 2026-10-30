@@ -18,6 +18,10 @@
             "type": "boolean",
             "description": "Whether to return probability information."
           },
+          "length": {
+            "type": "integer",
+            "description": "Expected number of characters. When the result is longer than this, the segments with the lowest peak probability are dropped. Omit to keep the default behavior."
+          },
           "charset_range": {
             "type": "string",
             "description": "Limits the character range for this OCR. If '0' to '7', corresponds to built-in charsets; otherwise, a custom charset like '0123456789+-x/='."

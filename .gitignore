@@ -2,14 +2,29 @@
 /target
 /target/
 /ddddocr-dll/target
+*.rs.bk
+*.profraw
+*.profdata
+perf.data*
 
 # 刻意不提交 Cargo.lock（构建时重新解析，避免锁定 ort git 依赖）
 /Cargo.lock
 
-# 测试/脚本在仓库根目录产生的输出图片
+# 测试/脚本在仓库根目录产生的输出图片（image/ 与 docs/example/ 的素材不受影响）
 /*.png
 /*.jpg
 /*.jpeg
+/output1.jpg
+/output2.jpg
+
+# Python 本地环境与缓存（test_api.py）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # 本地环境与日志
 .env
@@ -20,6 +35,14 @@
 .vscode/
 .idea/
 *.iml
+*.swp
+*.orig
+*.rej
 .DS_Store
 Thumbs.db
-*.swp
+
+# AI 工具本地状态
+.claude/
+.codex/
+.cursor/
+.opencode/

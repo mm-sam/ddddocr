@@ -409,21 +409,16 @@ pub struct CharacterProbability {
 /// 有时候只想获取 probability，而不获取 text 和 confidence。
 impl CharacterProbability {
     pub fn get_text(&mut self) -> &str {
-        self.text.get_or_insert_with(|| {
-            let mut s = String::new();
+        self.text
+            .get_or_insert_with(|| decode_probability(&self.probability, &self.charset))
+    }
 
-            for i in &self.probability {
-                let (n, _) = i
-                    .iter()
-                    .enumerate()
-                    .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                    .unwrap();
+    /// 依指定字數解碼；候選字串超過長度時，會丟棄峰值機率最低的片段。
+    /// 注意：本方法會覆寫 `text` 快取，之後呼叫 `get_text` 會沿用最後一次的解碼結果。
+    pub fn get_text_with_length(&mut self, length: usize) -> &str {
+        let text = decode_probability_with_length(&self.probability, &self.charset, Some(length));
 
-                s += &self.charset[n];
-            }
-
-            s
-        })
+        self.text.insert(text).as_str()
     }
 
     pub fn get_confidence(&mut self) -> f64 {
@@ -1658,6 +1653,40 @@ impl<'a> Ddddocr<'a> {
     where
         I: AsRef<[u8]>,
     {
+        self.classification_with_options_length(image, png_fix, filter, None)
+    }
+
+    /// 内容识别，指定期望字数；候选字符串超过长度时，会依峰值机率由低到高丢弃多余片段。
+    pub fn classification_with_length<I>(&self, image: I, length: usize) -> anyhow::Result<String>
+    where
+        I: AsRef<[u8]>,
+    {
+        self.classification_with_options_length(image, false, None, Some(length))
+    }
+
+    /// 内容识别，指定期望字数。
+    pub fn classification_with_length_with_path<P>(
+        &self,
+        path: P,
+        length: usize,
+    ) -> anyhow::Result<String>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        self.classification_with_length(std::fs::read(path)?, length)
+    }
+
+    /// 内容识别的内部实现，`length` 为 None 时与既有行为完全一致。
+    fn classification_with_options_length<I>(
+        &self,
+        image: I,
+        png_fix: bool,
+        filter: Option<ColorFilter>,
+        length: Option<usize>,
+    ) -> anyhow::Result<String>
+    where
+        I: AsRef<[u8]>,
+    {
         let image = match filter {
             Some(v) => v.filter(image.as_ref())?,
             None => image::load_from_memory(image.as_ref())?,
@@ -1761,38 +1790,21 @@ impl<'a> Ddddocr<'a> {
         } else {
             let result = &self.session.run(ort::inputs![tensor]?)?[0];
             let result = result.try_extract_tensor::<f32>()?;
-            let mut last_item = 0;
 
             // 输入长这样 [[[1,2,3,4], [1,2,3,4], [1,2,3,4]]]
-            // 我们要获取   ^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^
-            // 最后结果 [3, 3, 3]
-            // 这是最大值的索引
+            // 每一列取最大值的索引后交给统一的解碼器处理
             let result = result
                 .rows()
                 .into_iter()
-                .map(|v| {
-                    // 找出数组中元素值最大的那个，然后获取他在数组中的索引
-                    v.iter()
-                        .enumerate()
-                        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                        .unwrap_or((0, &0.0))
-                        .0
-                })
-                .collect::<Vec<usize>>();
+                .map(|v| v.to_vec())
+                .collect::<Vec<Vec<f32>>>();
 
-            // 过滤无效字符
-            Ok(result
-                .iter()
-                .filter(|&&v| {
-                    if v != 0 && v != last_item {
-                        last_item = v;
-                        true
-                    } else {
-                        false
-                    }
-                })
-                .map(|&v| charset[v].to_string())
-                .collect::<String>())
+            // 转成与 classification_probability 相同的逐列机率后解碼，确保两条路径结果一致
+            Ok(decode_probability_with_length(
+                &decode_softmax_rows(&result),
+                charset,
+                length,
+            ))
         }
     }
 
@@ -1982,6 +1994,180 @@ impl<'a> Ddddocr<'a> {
     {
         self.detection(std::fs::read(path)?)
     }
+}
+
+/// 解碼片段：連續相同 label 的一組輸出列。
+#[derive(Debug, Clone, Copy)]
+struct DecodeSegment {
+    label: usize,
+    /// 片段內的峰值機率。
+    peak: f32,
+}
+
+/// 對每一列做 softmax，與 `classification_probability` 的機率輸出一致，
+/// 讓兩條路徑解碼同一份機率時得到相同結果。
+fn decode_softmax_rows(rows: &[Vec<f32>]) -> Vec<Vec<f32>> {
+    let exps = rows
+        .iter()
+        .map(|row| row.iter().map(|v| v.exp()).collect::<Vec<f32>>())
+        .collect::<Vec<_>>();
+    let total: f32 = exps.iter().flatten().sum();
+
+    exps.into_iter()
+        .map(|row| {
+            let row_sum: f32 = row.iter().sum();
+
+            if total == 0.0 || row_sum == 0.0 {
+                return row;
+            }
+
+            row.into_iter()
+                .map(|v| (v / total) / (row_sum / total))
+                .collect()
+        })
+        .collect()
+}
+
+/// 找出單列機率最大的 label 及其機率。
+fn decode_row_argmax(row: &[f32]) -> (usize, f32) {
+    row.iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(label, &p)| (label, p))
+        .unwrap_or((0, 0.0))
+}
+
+/// 把逐列機率矩陣切成片段：連續相同 label 合併，空白（charset 為空字串）會斷開片段。
+fn decode_segments(probability: &[Vec<f32>], charset: &[String]) -> Vec<DecodeSegment> {
+    let is_blank = |label: usize| charset.get(label).map_or(true, |v| v.is_empty());
+    let mut segments: Vec<DecodeSegment> = Vec::new();
+    let mut last: Option<usize> = None;
+
+    for row in probability {
+        let (label, peak) = decode_row_argmax(row);
+
+        if is_blank(label) {
+            last = None;
+            continue;
+        }
+
+        if last == Some(label) {
+            let segment = segments.last_mut().unwrap();
+            segment.peak = segment.peak.max(peak);
+        } else {
+            segments.push(DecodeSegment { label, peak });
+        }
+
+        last = Some(label);
+    }
+
+    segments
+}
+
+/// 長度歸一化的對數似然分數，避免長短候選不可比。
+fn decode_score(pieces: &[(usize, f32)]) -> f64 {
+    if pieces.is_empty() {
+        return f64::NEG_INFINITY;
+    }
+
+    let sum: f64 = pieces.iter().map(|&(_, p)| (p.max(1e-7) as f64).ln()).sum();
+
+    sum / pieces.len() as f64
+}
+
+fn decode_text(pieces: &[(usize, f32)], charset: &[String]) -> String {
+    pieces
+        .iter()
+        .map(|&(label, _)| charset.get(label).cloned().unwrap_or_default())
+        .collect()
+}
+
+/// 套用長度先驗：片段數超過 `length` 時，依峰值機率由小到大丟棄多餘片段，
+/// 其餘片段保持原本順序。`None` 代表不限制。
+fn decode_limit(pieces: &[(usize, f32)], length: Option<usize>) -> Vec<(usize, f32)> {
+    let Some(limit) = length else {
+        return pieces.to_vec();
+    };
+
+    if pieces.len() <= limit {
+        return pieces.to_vec();
+    }
+
+    let mut keep = vec![true; pieces.len()];
+    let mut order = (0..pieces.len()).collect::<Vec<_>>();
+    order.sort_by(|&a, &b| pieces[a].1.total_cmp(&pieces[b].1));
+
+    for &i in order.iter().take(pieces.len() - limit) {
+        keep[i] = false;
+    }
+
+    pieces
+        .iter()
+        .zip(keep)
+        .filter(|(_, keep)| *keep)
+        .map(|(piece, _)| *piece)
+        .collect()
+}
+
+/// 由同一份片段表產生多個候選（CTC、不去重、跨空白去重），
+/// 以長度歸一化的峰值機率打分擇優；同分時保留較早的候選。
+fn decode_probability(probability: &[Vec<f32>], charset: &[String]) -> String {
+    decode_probability_with_length(probability, charset, None)
+}
+
+/// 與 `decode_probability` 相同，但可指定期望字數；候選超過長度時會先丟棄
+/// 峰值機率最低的片段，再進行打分擇優。
+fn decode_probability_with_length(
+    probability: &[Vec<f32>],
+    charset: &[String],
+    length: Option<usize>,
+) -> String {
+    let is_blank = |label: usize| charset.get(label).map_or(true, |v| v.is_empty());
+    let segments = decode_segments(probability, charset);
+
+    // ctc：片段直接串接（只合併連續相同列，空白已斷開）
+    let ctc = segments
+        .iter()
+        .map(|v| (v.label, v.peak))
+        .collect::<Vec<_>>();
+
+    // no_collapse：保留每一列（舊版 get_text 行為）
+    let no_collapse = probability
+        .iter()
+        .map(|row| decode_row_argmax(row))
+        .filter(|(label, _)| !is_blank(*label))
+        .collect::<Vec<_>>();
+
+    // global_dedup：跨空白全局去重（舊版 classification 行為）
+    let mut global_dedup = Vec::new();
+    let mut last_item: Option<usize> = None;
+
+    for row in probability {
+        let (label, peak) = decode_row_argmax(row);
+
+        if !is_blank(label) && last_item != Some(label) {
+            last_item = Some(label);
+            global_dedup.push((label, peak));
+        }
+    }
+
+    let mut best: Option<(f64, String)> = None;
+
+    // 分數相同時保留較早的候選（ctc 優先），不改變既有排序。
+    for pieces in [ctc, no_collapse, global_dedup] {
+        let pieces = decode_limit(&pieces, length);
+        let score = decode_score(&pieces);
+        let text = decode_text(&pieces, charset);
+        let better = best
+            .as_ref()
+            .map_or(true, |(best_score, _)| score > *best_score);
+
+        if better {
+            best = Some((score, text));
+        }
+    }
+
+    best.map(|(_, text)| text).unwrap_or_default()
 }
 
 // cargo test --no-default-features --features download-binaries
@@ -2198,5 +2384,149 @@ mod tests {
 
         #[cfg(not(feature = "inline-model"))]
         println!("not feature inline-model");
+    }
+
+    #[test]
+    fn decode_probability_cases() {
+        let charset = ["", "a", "b"]
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>();
+
+        // 相邻重复列只保留一次，空白会断开片段
+        let probability = vec![
+            vec![0.9, 0.05, 0.05],
+            vec![0.02, 0.95, 0.03],
+            vec![0.02, 0.7, 0.28],
+            vec![0.9, 0.05, 0.05],
+            vec![0.02, 0.03, 0.95],
+        ];
+
+        assert_eq!(decode_probability(&probability, &charset), "ab");
+
+        // 低信心的孤立片段不再自动丢弃，只有带 length 时才可能被裁掉
+        let probability = vec![
+            vec![0.9, 0.05, 0.05],
+            vec![0.45, 0.5, 0.05],
+            vec![0.9, 0.05, 0.05],
+            vec![0.02, 0.03, 0.95],
+        ];
+
+        assert_eq!(decode_probability(&probability, &charset), "ab");
+        assert_eq!(
+            decode_probability_with_length(&probability, &charset, Some(1)),
+            "b"
+        );
+
+        // 指定长度时，依峰值机率由小到大丢弃多余片段，其余保持原顺序
+        let probability = vec![
+            vec![0.01, 0.99, 0.0],
+            vec![0.9, 0.05, 0.05],
+            vec![0.05, 0.0, 0.95],
+            vec![0.9, 0.05, 0.05],
+            vec![0.1, 0.9, 0.0],
+        ];
+
+        assert_eq!(decode_probability(&probability, &charset), "aba");
+        assert_eq!(
+            decode_probability_with_length(&probability, &charset, Some(2)),
+            "ab"
+        );
+        assert_eq!(
+            decode_probability_with_length(&probability, &charset, Some(9)),
+            "aba"
+        );
+    }
+
+    #[test]
+    fn decode_docs_example() {
+        let ddddocr = ddddocr_classification().unwrap();
+
+        // docs/example 的档名即正确答案；45g46 与 g2n8g 左侧有残缺笔画，
+        // 模型会多认出 r（p=0.998）与 i（p=0.536），属于已知差异；
+        // 带上 length=5 时这两个低峰值片段会被丢弃（见 decode_docs_example_with_length）。
+        let cases = [
+            ("355fx", "355fx"),
+            ("5ex4x", "5ex4x"),
+            ("45g46", "r45g46"),
+            ("a4bp5", "a4bp5"),
+            ("enw78", "enw78"),
+            ("ewx8c", "ewx8c"),
+            ("fxdby", "fxdby"),
+            ("g2n8g", "ig2n8g"),
+            ("gf8nm", "gf8nm"),
+            ("gmpf4", "gmpf4"),
+            ("n2624", "n2624"),
+            ("wxmpn", "wxmpn"),
+            ("y33g3", "y33g3"),
+            ("yyfe8", "yyfe8"),
+        ];
+
+        for (name, expected) in cases {
+            let image = read_image(&format!("docs/example/{}.png", name));
+            let text = ddddocr.classification(&image).unwrap();
+            let text_probability = ddddocr
+                .classification_probability(&image)
+                .unwrap()
+                .get_text()
+                .to_string();
+
+            println!("{} => {} (probability: {})", name, text, text_probability);
+
+            assert_eq!(text, expected, "classification: {}", name);
+            assert_eq!(
+                text, text_probability,
+                "classification_probability: {}",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn decode_docs_example_with_length() {
+        let ddddocr = ddddocr_classification().unwrap();
+
+        // docs/example 的验证码固定 5 个字，带上 length 后 14 张图全部命中档名
+        // （45g46 会丢弃峰值机率最低的 r）。
+        for name in [
+            "355fx", "5ex4x", "45g46", "a4bp5", "enw78", "ewx8c", "fxdby", "g2n8g", "gf8nm",
+            "gmpf4", "n2624", "wxmpn", "y33g3", "yyfe8",
+        ] {
+            let image = read_image(&format!("docs/example/{}.png", name));
+            let text = ddddocr.classification_with_length(&image, 5).unwrap();
+            let text_probability = ddddocr
+                .classification_probability(&image)
+                .unwrap()
+                .get_text_with_length(5)
+                .to_string();
+
+            println!("{} => {} (probability: {})", name, text, text_probability);
+
+            assert_eq!(text, name, "classification_with_length: {}", name);
+            assert_eq!(
+                text, text_probability,
+                "classification_probability_with_length: {}",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn decode_legacy_model() {
+        let ddddocr = ddddocr_classification_old().unwrap();
+
+        // legacy 模型（common_old）会出现低信心但真实的字元，不能被丢弃。
+        for (name, expected) in [
+            ("image/1.png", "eK9d"),
+            ("image/2.png", "极速换新"),
+            ("image/4.png", "九乘六等于"),
+        ] {
+            let image = read_image(name);
+            let text = ddddocr.classification(&image).unwrap();
+
+            println!("{} => {}", name, text);
+
+            assert_eq!(text, expected, "legacy classification: {}", name);
+        }
     }
 }

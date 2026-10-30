@@ -512,6 +512,8 @@ docker run --rm -p 8000:8000 mmhk/ddddocr:latest --only-mcp
 
 本 fork 的 GitHub Actions 只发布 Docker 镜像（见 [Docker 部署](#docker-部署)），不再产出各平台二进制；如需二进制，请本地 `cargo build` 或使用上游 [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases)。
 
+识别结果与旧版本不同？官方行模型已改为统一的 CTC 解码：相邻相同字符只在连续时合并，空白会中断重复，因此同一张图里跨空白的重复字符现在会被保留（例如 `355fx` 不再被压成 `35fx`）。只有带 `length` 时才会按峰值概率丢弃多余片段。已知差异：`45g46` / `g2n8g` 这类左侧带残缺笔画的图片在未指定 `length` 时会多出一个字符，指定正确字数即可消除。
+
 关于使用 `cuda` 的问题。
 
 `cuda` 和 `cuDNN` 都需要安装好。

@@ -68,6 +68,10 @@ List available tools.
             "charset_range": {
               "type": "string",
               "description": "Character range for recognition"
+            },
+            "length": {
+              "type": "integer",
+              "description": "Expected number of characters; segments with the lowest peak probability are dropped when the result is longer"
             }
           },
           "required": ["image"]
@@ -146,7 +150,8 @@ Call a tool.
     "name": "ocr",
     "arguments": {
       "image": "base64_encoded_image",
-      "color_filter": "green"
+      "color_filter": "green",
+      "length": 5
     }
   }
 }
@@ -218,7 +223,7 @@ ddddocr --address 0.0.0.0:8000 --ocr --det --slide --only-mcp
 ## Tool Descriptions
 
 ### `ocr`
-Perform OCR recognition on an image. Supports color filtering and character range specification.
+Perform OCR recognition on an image. Supports color filtering, character range specification, and an optional expected `length` (extra low-confidence segments are dropped when the result is longer).
 
 ### `det`
 Detect objects (text regions) in an image. Returns bounding box coordinates.

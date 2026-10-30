@@ -77,6 +77,15 @@ def test_routes(
                 "probability": True,
             },
         },
+        {
+            "method": "post",
+            "path": "/ocr",
+            "json": {
+                "image": image_b64,
+                "charset_range": "A九A乘A六A等A于A？A",
+                "length": 6,
+            },
+        },
         {"method": "post", "path": "/det", "json": {"image": image_b64}},
         {
             "method": "post",

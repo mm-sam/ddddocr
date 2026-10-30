@@ -119,6 +119,10 @@ struct OCRRequest {
     /// 是否返回概率信息。
     probability: Option<bool>,
 
+    /// 期望的字符数；识别结果超过该长度时，会丢弃峰值概率最低的片段。
+    /// 不传则保持原有行为。
+    length: Option<usize>,
+
     /// 限定字符范围，只对本次 ocr 生效，
     /// 如果参数是 0 到 7，对应内置的字符集，
     /// 除此之外的参数，表示自定义字符集，例如 `"0123456789+-x/="`。
@@ -212,6 +216,7 @@ async fn route_ocr(req: JsonBody<OCRRequest>, res: &mut Response) -> anyhow::Res
     let image = BASE64_STANDARD.decode(&req.image)?;
     let png_fix = req.png_fix.unwrap_or_default();
     let probability = req.probability.unwrap_or_default();
+    let length = req.length;
     let color_filter = if let Some(v) = req.color_filter.clone() {
         Some(serde_json::from_value::<ColorFilter>(v)?)
     } else {
@@ -239,7 +244,7 @@ async fn route_ocr(req: JsonBody<OCRRequest>, res: &mut Response) -> anyhow::Res
         None
     };
 
-    let (text, probability) = if charset_range.is_some() || probability {
+    let (text, probability) = if charset_range.is_some() || probability || length.is_some() {
         let mut result = spawn_blocking({
             let color_filter = color_filter.clone();
             let charset_range = charset_range.clone();
@@ -256,7 +261,10 @@ async fn route_ocr(req: JsonBody<OCRRequest>, res: &mut Response) -> anyhow::Res
         .await??;
 
         (
-            result.get_text().to_string(),
+            match length {
+                Some(length) => result.get_text_with_length(length).to_string(),
+                None => result.get_text().to_string(),
+            },
             probability.then_some(result.probability),
         )
     } else {

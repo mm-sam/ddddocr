@@ -512,6 +512,8 @@ Other arguments (`--address`, `--ocr-charset-range`, `--acme`, etc.) work exactl
 
 GitHub Actions in this fork only publishes the Docker image (see [Docker Deployment](#docker-deployment)); it no longer produces per-platform binaries. If you need a binary, build it locally with `cargo build` or use the upstream [86maid/ddddocr releases](https://github.com/86maid/ddddocr/releases).
 
+Recognition results differ from older versions? The official line model now uses unified CTC decoding: adjacent identical labels are merged only when they are contiguous, while a blank breaks the repetition. As a result, repeated characters separated by a blank in the same image are now preserved (for example, `355fx` is no longer collapsed to `35fx`). Extra segments are dropped by peak probability only when `length` is supplied. Known difference: images such as `45g46` / `g2n8g` with broken strokes on the left produce one extra character when `length` is not specified; passing the correct length resolves it.
+
 Regarding the issue of using `cuda`.
 
 Both `cuda` and `cuDNN` need to be installed.
