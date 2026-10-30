@@ -5,7 +5,7 @@ import { VueLoaderPlugin } from 'rspack-vue-loader'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const PROXY_TARGET = 'http://127.0.0.1:8000'
+const PROXY_TARGET = process.env.RSPACK_PROXY_TARGET || 'http://192.168.33.8:8089'
 const PROXY_ROUTES = [
   '/ocr',
   '/det',
