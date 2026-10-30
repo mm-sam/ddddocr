@@ -68,6 +68,7 @@ An easy-to-use general-purpose verification code recognition rust library
 - [Docker Deployment](#docker-deployment)
   - [Pull and Run](#pull-and-run)
   - [Start with Docker Compose](#start-with-docker-compose)
+  - [Development container (optional)](#development-container-optional)
   - [Startup Arguments](#startup-arguments)
   - [Platform and Tags](#platform-and-tags)
 - [Difficult and complicated cases](#difficult-and-complicated-cases)
@@ -544,6 +545,19 @@ services:
     # command: ["--only-mcp"]
 ```
 
+## Development container (optional)
+
+To develop inside a container, use the `docker-compose.dev.yml` at the repository root. It is independent of the runtime service above and does not bind port 8000:
+
+```sh
+docker compose -f docker-compose.dev.yml up -d --build   # build and start the dev container
+docker exec -it ddddocr-dev bash                          # enter the container
+# inside: cd /app && cargo check / cargo build --release
+docker compose -f docker-compose.dev.yml down             # stop and remove
+```
+
+`target/`, the cargo registry and the ort download cache live in named volumes instead of the Windows bind mount, so `cargo check` stays in the seconds range after a container rebuild without recompiling dependencies.
+
 ## Startup Arguments
 
 The image starts with `--ocr --det --slide --mcp` by default, enabling content recognition, object detection, slider matching and the MCP protocol at the same time.
@@ -568,7 +582,7 @@ Other arguments (`--address`, `--ocr-charset-range`, `--acme`, etc.) work exactl
 - Tag rules: `latest` points to the newest release, and version tags are published as well. For example, after releasing `v1.2.3`, both `mmhk/ddddocr:1.2.3` and `mmhk/ddddocr:1.2` are available.
 - Images are built and pushed to Docker Hub by GitHub Actions when a `v*` tag is pushed (`linux/amd64`, tagged `latest` plus the version number). The workflow has no manual trigger; push a new `v*` tag to publish.
 
-> Note: the `Dockerfile` in the repository root is only a musl **build** environment (`rust:1.90.0-alpine`, discarded after use), not a runnable service image. The runnable service image is defined in `Dockerfile.runtime`.
+> Note: the `Dockerfile` in the repository root is only a musl **build** environment (`rust:1.95.0-alpine`, discarded after use), not a runnable service image. The runnable service image is defined in `Dockerfile.runtime`.
 
 # Difficult and complicated cases
 

@@ -1,10 +1,9 @@
-# Docker build context 精簡（Dockerfile.runtime 只需要 src、model、Cargo.toml 與 MCP JSON）
+# Docker build context 精簡（Dockerfile.runtime 只需要 src、model、Cargo.toml、Cargo.lock 與 MCP JSON）
 # 採明確排除清單，避免 `*` 全排除後例外規則失效導致 COPY 失敗。
-# 注意：model/、src/、Cargo.toml、initialize.json、list.json 必須保留。
+# 注意：model/、src/、Cargo.toml、Cargo.lock、initialize.json、list.json 必須保留。
 
 # 构建产物与依赖，避免本机状态影响镜像
 target
-Cargo.lock
 *.rlib
 *.rmeta
 *.o

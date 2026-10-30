@@ -7,9 +7,6 @@
 *.profdata
 perf.data*
 
-# 刻意不提交 Cargo.lock（构建时重新解析，避免锁定 ort git 依赖）
-/Cargo.lock
-
 # 测试/脚本在仓库根目录产生的输出图片（image/ 与 docs/example/ 的素材不受影响）
 /*.png
 /*.jpg

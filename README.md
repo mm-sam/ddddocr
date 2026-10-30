@@ -68,6 +68,7 @@ a simple OCR API server, very easy to deploy。
 - [Docker 部署](#docker-部署)
   - [拉取与启动](#拉取与启动)
   - [使用 Docker Compose 启动](#使用-docker-compose-启动)
+  - [开发容器（可选）](#开发容器可选)
   - [启动参数](#启动参数)
   - [平台与标签](#平台与标签)
 - [疑难杂症](#疑难杂症)
@@ -544,6 +545,19 @@ services:
     # command: ["--only-mcp"]
 ```
 
+## 开发容器（可选）
+
+想在容器内开发时，使用根目录的 `docker-compose.dev.yml`（与上面的执行期服务互不相干，不会占用 8000 埠）：
+
+```sh
+docker compose -f docker-compose.dev.yml up -d --build   # 构建并启动 dev 容器
+docker exec -it ddddocr-dev bash                          # 进入容器
+# 容器内：cd /app && cargo check / cargo build --release
+docker compose -f docker-compose.dev.yml down             # 停止并移除
+```
+
+`target/`、cargo registry 与 ort 下载缓存都放在 named volume，而非 Windows 绑定挂载，因此重建容器后 `cargo check` 仍可秒级完成，不需要重新编译依赖。
+
 ## 启动参数
 
 镜像默认以 `--ocr --det --slide --mcp` 启动，即同时开启内容识别、目标检测、滑块匹配与 MCP 协议。
@@ -568,7 +582,7 @@ docker run --rm -p 8000:8000 mmhk/ddddocr:latest --only-mcp
 - 标签规则：`latest` 指向最新发布版本，同时提供版本号标签。例如发布 `v1.2.3` 后，可以使用 `mmhk/ddddocr:1.2.3` 和 `mmhk/ddddocr:1.2`。
 - 镜像由 GitHub Actions 在推送 `v*` 标签时自动构建并发布到 Docker Hub（`linux/amd64`，标签为 `latest` 与版本号）。工作流没有手动触发入口，需要发布时请推送新的 `v*` 标签。
 
-> 注意：仓库根目录的 `Dockerfile` 只是 musl **编译**环境（`rust:1.90.0-alpine`，用完即弃），不是可直接运行的服务镜像。可直接运行的服务镜像定义在 `Dockerfile.runtime`。
+> 注意：仓库根目录的 `Dockerfile` 只是 musl **编译**环境（`rust:1.95.0-alpine`，用完即弃），不是可直接运行的服务镜像。可直接运行的服务镜像定义在 `Dockerfile.runtime`。
 
 # 疑难杂症
 

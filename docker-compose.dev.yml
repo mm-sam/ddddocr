@@ -1,0 +1,46 @@
+# ddddocr 開發容器編排（與執行期服務 docker-compose.yml 無關，請勿混用）
+# 啟動：docker compose -f docker-compose.dev.yml up -d --build
+# 進入：docker exec -it ddddocr-dev bash
+# 停止：docker compose -f docker-compose.dev.yml down
+#
+# 用途：容器內保存完整的 Rust 工具鏈與 C++ 連結環境，直接對 repo 執行
+#       cargo check / cargo build --release。不映射 8000 埠，開發時在容器內
+#       cargo run -- --ocr --det --slide --mcp 即可；對外服務請用 docker-compose.yml。
+#
+# 必須有下面這行 compose project name：兩個 compose 檔都在同一目錄，預設會共用
+# 專案名 ddddocr，這樣 `up -d` 會把執行期容器 ddddocr 視為 orphan；
+# 一旦加上 --remove-orphans 就會誤刪它。獨立專案名可完全隔離兩者。
+name: ddddocr-dev
+services:
+  dev:
+    # 固定映像名稱：否則 compose 會用專案名+服務名產生 ddddocr-dev-dev，
+    # 每次改專案名就多出一個殘留 tag
+    image: ddddocr-dev:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ddddocr-dev
+    working_dir: /app
+    # 保持容器常駐，之後用 docker exec 進入操作
+    command: sleep infinity
+    environment:
+      # 關閉增量編譯：增量快取寫在 target/ 會拖慢綁定掛載的讀寫，且對一次編譯無益
+      CARGO_INCREMENTAL: "0"
+    volumes:
+      # 原始碼直接綁定 repo，改檔立即生效
+      - .:/app
+      # target/ 與 cargo registry、ort 下載快取放在 named volume，
+      # 避免 Windows 綁定掛載的 I/O 開銷，重建容器也不會遺失已編譯依賴
+      - ddddocr-target:/app/target
+      - ddddocr-cargo-registry:/usr/local/cargo/registry
+      - ddddocr-ort-cache:/root/.cache
+
+volumes:
+  # 明確命名（不使用 compose 專案前綴），沿用既有 volume，
+  # 否則會另建 ddddocr_ddddocr-target 並重編數百個依賴
+  ddddocr-target:
+    name: ddddocr-target
+  ddddocr-cargo-registry:
+    name: ddddocr-cargo-registry
+  ddddocr-ort-cache:
+    name: ddddocr-ort-cache

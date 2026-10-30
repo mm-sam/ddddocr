@@ -47,9 +47,11 @@ This file is the working contract for AI agents in this repository. Rules stated
 ├── .agent/skills/ddddocr/ # Packaged agent skill: python scripts + API/MCP references
 ├── .github/workflows/build.yml # Docker-only workflow (push tags `v*`): single `docker-image` job
 ├── docs/plans/           # Implementation plans ONLY (see §12); no other docs here
-├── Dockerfile            # musl builder image (rust:1.90.0-alpine); build-only, not a service image
-├── Dockerfile.runtime    # Runnable runtime image: multi-stage builder → alpine:3.22, inline models
-├── .dockerignore         # Trims the Dockerfile.runtime build context (excludes target/image/docs, etc.)
+├── Dockerfile            # musl builder image (rust:1.95.0-alpine); build-only, not a service image
+├── Dockerfile.runtime    # Runnable runtime image: rust:1.95.0-alpine builder → alpine:3.22, inline models
+├── Dockerfile.dev        # Dev container image (rust:1.95-slim-bookworm + g++/pkg-config/procps); not a service image
+├── docker-compose.dev.yml # Dev container compose (named volumes for target/registry/ort cache); NOT the runtime service
+├── .dockerignore         # Trims the Dockerfile.runtime build context (excludes target/image/docs, etc.; keeps Cargo.lock)
 └── Cargo.toml            # Features + dependency allowlist
 ```
 
@@ -84,8 +86,8 @@ Rules:
 ### Dependency rules
 - **New dependencies require explicit user approval.**
 - Prefer existing crates and std before adding anything.
-- Do **not** bump `ort` or its feature set casually: there is no committed `Cargo.lock`, and the fork's API may drift.
-- No `Cargo.lock` is committed (gitignored); builds resolve fresh and need network/proxy access.
+- Do **not** bump `ort` or its feature set casually: the committed `Cargo.lock` pins the fork's resolved revision, and its API may drift.
+- `Cargo.lock` is committed and used with `--locked` (Docker builds pass `--locked`), so dependency versions are reproducible; the first build still needs network/proxy access to fetch the pinned crates.
 
 ---
 
@@ -107,6 +109,11 @@ Rules:
 ### Formatting / lint
 - No `rustfmt.toml`, `clippy.toml`, or lint CI. Run `cargo fmt` before finishing; keep formatting consistent with the existing file (default rustfmt).
 
+### Auxiliary scripts and text handling (mandatory)
+- **No new or modified Python scripts.** Use Node.js (`*.mjs`, or `node -e`) for all scripting. `test_api.py` and `.agent/skills/ddddocr/scripts/*.py` are legacy: migrate one only when you are already changing it, never as a drive-by rewrite.
+- **No pwsh for text/encoding work** — regex rewriting, transcoding, JSON edits, bulk renames. Use a Node.js script instead; keep pwsh for plain command running (`cargo`, `docker`, `git`, starting the server). When Node writes files, write explicit UTF-8 and do not add a BOM or flip CRLF/LF.
+- This governs auxiliary tooling only. Rust tests and CI still go through `cargo test` per §5.
+
 ---
 
 ## 5. Build and Feature Matrix
@@ -123,6 +130,7 @@ Rules:
 | Single test | `cargo test --no-default-features --features download-binaries classification` |
 | musl (Docker only) | `docker build -t rust-musl-builder -f Dockerfile .` then `cargo build --release --target x86_64-unknown-linux-musl ...` inside it |
 | Runtime image (`linux/amd64`) | `docker build -f Dockerfile.runtime -t ddddocr:local .` then `docker run --rm -p 8000:8000 ddddocr:local` |
+| Dev container | `docker compose -f docker-compose.dev.yml up -d --build` then `docker exec -it ddddocr-dev bash` |
 
 Rules:
 - `inline-model` uses `include_bytes!` for every `model/*.onnx`; `--ocr-path` / `--det-path` are ignored while it is on.
@@ -131,7 +139,10 @@ Rules:
 - onnxruntime is auto-downloaded to `%APPDATA%\ort.pyke.io`; set `ORT_LIB_LOCATION` to use local libs. Static-link failures usually mean missing MSVC 2022 (Windows), gcc/g++ 11 (Linux), or glibc ≥ 2.35 (Linux arm64).
 - CI only has a `docker-image` job triggered by `push` tags `v*`; it builds the `linux/amd64` runtime image and pushes it to Docker Hub `mmhk/ddddocr`, tagged `latest` plus semver (`v1.2.3` → `1.2.3`, `1.2`). There is no manual trigger and no per-platform binary output.
 - Linux musl must be built in the `Dockerfile` image; do not attempt a host musl build.
-- `Dockerfile` is only a musl build environment (discarded after use); `Dockerfile.runtime` is the runnable service image (`alpine:3.22`, static musl binary, inline models, `EXPOSE 8000`, default CMD `--ocr --det --slide --mcp`). Publishing the runtime image needs repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+- `Dockerfile` is only a musl build environment (`rust:1.95.0-alpine`, discarded after use); `Dockerfile.runtime` is the runnable service image (`rust:1.95.0-alpine` builder → `alpine:3.22`, static musl binary, inline models, `EXPOSE 8000`, default CMD `--ocr --det --slide --mcp`). Publishing the runtime image needs repo secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+- `Dockerfile.runtime` copies the committed `Cargo.lock` and builds with `--locked`; `.dockerignore` must keep `Cargo.lock` in the build context. A dummy-`src/` dependency precompile layer keeps `target/` **inside the image layer** (not a cache mount) so CI's `cache-to: type=gha,mode=max` can reuse it across runners; only the Cargo registry/git mounts use `type=cache`, because cache-mount contents are never exported to gha/registry caches. The final build layer strips, copies the binary out, then removes `target/` in the same `RUN`.
+- `Dockerfile.dev` / `docker-compose.dev.yml` are the **local dev container only** (`container_name: ddddocr-dev`, `command: sleep infinity`, no port mapping). Do not merge them into `docker-compose.yml`, which is the runtime service.
+- The dev container relies on named volumes (`ddddocr-target`, `ddddocr-cargo-registry`, `ddddocr-ort-cache`) with explicit `name:` so compose never adds a project prefix; without them `target/` lands on the Windows bind mount and builds slow down drastically. `CARGO_INCREMENTAL=0` is set for the same reason, and `g++` must stay installed or `cargo build --release` fails with `unable to find library -lstdc++`. The compose file also carries its own `name: ddddocr-dev` project name so the dev and runtime `docker-compose.yml` projects never treat each other's containers as orphans.
 
 ---
 
@@ -141,7 +152,7 @@ Rules:
 - Tests read `image/*` via relative paths and write `output1.jpg` / `output2.jpg`, so **run from the repo root**. These outputs are untracked scratch files.
 - Existing tests mostly `println!` results; they catch panics/IO/shape errors, not accuracy regressions. When changing preprocessing, compare printed output on the same fixtures before/after instead of trusting a green run.
 - Add tests to the existing `mod tests`, 3–5 focused cases per change; do not create new test directories or bulk-generate suites.
-- `test_api.py` requires a running server (`--ocr --det --slide --mcp`) and `requests`; it only prints curl commands for each route and does not assert.
+- `test_api.py` requires a running server (`--ocr --det --slide --mcp`) and `requests`; it only prints curl commands for each route and does not assert. It is legacy Python — anything new or edited in it must be Node.js (§4).
 - Quick manual API check: start the server, then `curl http://127.0.0.1:8000/status`.
 
 ---
@@ -212,6 +223,7 @@ User documentation stays in `README.md` / `README_EN.md`; implementation plans g
 | Library API (methods, signatures) | `README.md` code samples (they are stale in places, e.g. examples use `let mut ocr` although methods take `&self`) |
 | Build/feature behavior | `README.md` "疑难杂症", `AGENTS.md` §5 |
 | Docker runtime image / publish behavior | `README.md` (Docker 部署), `README_EN.md` (Docker Deployment), `AGENTS.md` §2/§5 |
+| Dev container config (`Dockerfile.dev`, `docker-compose.dev.yml`) | `AGENTS.md` §2/§5, `README.md` (Docker 部署), `README_EN.md` (Docker Deployment) |
 | CI trigger or workflow shape (Docker-only, `push` tags `v*`) | `README.md`, `README_EN.md`, `AGENTS.md` §0/§5 |
 
 Library doc comments are Chinese, one short block per public method; keep that style rather than adding standalone docs.
@@ -243,7 +255,7 @@ If any item fails, fix it before reporting completion.
 
 ## 11. Git Rules
 
-- **Never commit**: `target/` (already ignored), `*.exe`/`*.dll`/`*.so`/`*.dylib`, generated root `*.png`/`*.jpg`, `output1.jpg`/`output2.jpg`, `Cargo.lock` (intentionally gitignored).
+- **Never commit**: `target/` (already ignored), `*.exe`/`*.dll`/`*.so`/`*.dylib`, generated root `*.png`/`*.jpg`, `output1.jpg`/`output2.jpg`.
 - **Do commit** when relevant: `model/*.onnx` and `model/*.json` are tracked; `image/` fixtures are tracked. Do not add them to `.gitignore`.
 - Commit messages in this repo are short Chinese phrases (e.g. `修复 mcp 下划线 bug`); there is no Conventional Commits history and no enforced format. Match the existing style rather than introducing a new convention.
 - Check `git status` before committing; unrelated modified model/image files are a red flag.

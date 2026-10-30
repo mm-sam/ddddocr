@@ -1,0 +1,13 @@
+# ddddocr 開發容器（僅用於本機開發，不產生服務映像）
+# 服務映像請見 Dockerfile.runtime；此檔只提供 cargo/rustc 與 C++ 連結工具鏈。
+FROM rust:1.95-slim-bookworm
+
+# g++：ort/onnxruntime 靜態連結需要 libstdc++，缺少時 release 連結會報
+#      `rust-lld: error: unable to find library -lstdc++`
+# pkg-config：部分 build script 依賴它尋找系統庫
+# procps：提供 pgrep/pkill 等容器內除錯工具
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends g++ pkg-config procps \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app

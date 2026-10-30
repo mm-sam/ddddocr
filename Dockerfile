@@ -1,4 +1,4 @@
-FROM rust:1.90.0-alpine
+FROM rust:1.95.0-alpine
 
 RUN apk add --no-cache \
     build-base \

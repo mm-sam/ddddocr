@@ -5,7 +5,7 @@
 # 因此模型會內嵌進二進位，最終映像不需要 model/ 目錄。
 # 使用 musl 靜態連結可讓 runtime 映像保持最小（alpine 基底即可）。
 
-FROM rust:1.90.0-alpine AS builder
+FROM rust:1.95.0-alpine AS builder
 
 # 沿用既有 Dockerfile 的編譯依賴（musl + onnxruntime 靜態連結所需）
 RUN apk add --no-cache \
@@ -23,17 +23,40 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # 只複製編譯必要檔案；.dockerignore 已排除其餘內容
-COPY Cargo.toml ./
+# Cargo.lock 已提交，配合 --locked 固定依賴集合，確保可重現建置
+COPY Cargo.toml Cargo.lock ./
+
+# 依賴預編譯層：先用占位 src/ 把 Cargo.lock 內的全部依賴編好，
+# 之後只改 src/ 時這層不會失效，可省下大量編譯時間。
+# target 必須留在這一層的圖層裡（不能掛 cache mount）：CI 每次都跑在全新 runner / 全新 builder，
+# 只有圖層快取（cache-to: type=gha,mode=max）能跨 runner 重用；cache mount 的內容不會被 gha/registry
+# 快取匯出（Docker 官方行為），掛了反而讓 CI 每次都重編全部依賴。
+# registry/git 仍用 cache mount，因為那是同一個 runner 內建置時的重試加速，且不佔圖層大小。
+# 占位原始碼只是為了讓 cargo 有 target，真正的原始碼下方會覆蓋。
+RUN mkdir -p src && printf 'fn main() {}\n' > src/main.rs && : > src/lib.rs
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --release --target x86_64-unknown-linux-musl --locked
+
+# 換上真正的原始碼、模型與 MCP 靜態 JSON
 COPY src ./src
 COPY model ./model
 COPY initialize.json list.json ./
 
+# COPY 會保留主機檔案時間戳，可能比上面占位編譯還舊，導致 cargo 誤判「沒變更」而沿用占位產物。
+# 因此先更新 src 下所有檔案的 mtime，確保本體一定會重新編譯。
+RUN find src -type f -exec touch {} +
+
 # 預設 features = inline-model + download-binaries，產出 x86_64 musl 二進位
-# 沒有提交 Cargo.lock，最新解析出的 mime-infer 4.1.0 需要 rustc 1.95；
-# 先釘回相容版本，避免 rust:1.90.0 建置失敗。
-RUN cargo update -p mime-infer --precise 4.0.1
-RUN cargo build --release --target x86_64-unknown-linux-musl \
- && strip --strip-debug target/x86_64-unknown-linux-musl/release/ddddocr
+# 依賴產物直接沿用上一層圖層的 target（不掛 cache mount），這樣 CI 用 mode=max 圖層快取就能跨 runner 重用。
+# 同一層內先 strip、複製出 /app/ddddocr，最後才 rm -rf target：被刪的內容同層新增又刪除，不會進快取，
+# 避免最終 builder 圖層多背約 1.5 GB。
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    cargo build --release --target x86_64-unknown-linux-musl --locked \
+ && strip --strip-debug target/x86_64-unknown-linux-musl/release/ddddocr \
+ && cp target/x86_64-unknown-linux-musl/release/ddddocr /app/ddddocr \
+ && rm -rf target
 
 FROM alpine:3.22
 
@@ -43,7 +66,7 @@ RUN apk add --no-cache ca-certificates tzdata libgcc libstdc++
 # 以非 root 使用者執行服務，降低容器逃逸風險
 RUN adduser -D -u 10001 ddddocr
 
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/ddddocr /usr/local/bin/ddddocr
+COPY --from=builder /app/ddddocr /usr/local/bin/ddddocr
 
 USER ddddocr
 
