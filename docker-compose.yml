@@ -10,6 +10,10 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      # 首頁靜態檔。runtime 鏡像未內建且工作目錄為 /，因此掛到 /static；
+      # 唯讀掛載，避免容器改動主機檔案。缺少此掛載時首頁 / 會 404。
+      - ./static:/static:ro
     environment:
       # 日誌級別，對應 tracing 的 RUST_LOG。
       RUST_LOG: info

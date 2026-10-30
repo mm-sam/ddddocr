@@ -408,6 +408,8 @@ ddddocr.exe --help
 
 启动服务后，访问 `http://127.0.0.1:8000/` 可以看到项目首页，包含基础介绍和 API 使用示例。首页为静态 HTML 文件，位于 `static/index.html`，使用 TailwindCSS v4、Remix Icon 和 Google Fonts（均通过 CDN 引入）。
 
+使用 Docker Compose 时，`docker-compose.yml` 会把仓库的 `static/` 以只读方式挂载到容器内的 `/static`（runtime 镜像的工作目录是 `/`），因此首页能正常访问；若自行部署镜像而缺少该挂载，首页 `/` 会返回 404。
+
 ## API 测试例子，完整的测试请看 `test_api.py` 文件
 
 ```python
@@ -532,6 +534,7 @@ compose 文件要点：
 - `platform: linux/amd64`：官方镜像只发布该架构；Apple Silicon 会走模拟。
 - `restart: unless-stopped`：异常退出或重启宿主后自动拉起。
 - `ports: 8000:8000`：把容器内监听端口映射到宿主机。
+- `volumes: ./static:/static:ro`：以只读方式挂载首页静态文件。runtime 镜像工作目录是 `/`，所以挂到 `/static`；缺少该挂载时首页 `/` 会 404。
 - `RUST_LOG: info`：日志级别，对应 tracing 的 `RUST_LOG`。
 - `command` 可覆盖镜像默认的 `--ocr --det --slide --mcp`，例如只保留 MCP 时改为 `["--only-mcp"]`。
 
@@ -546,6 +549,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      - ./static:/static:ro
     environment:
       RUST_LOG: info
     # command: ["--only-mcp"]

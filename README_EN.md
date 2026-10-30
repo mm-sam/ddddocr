@@ -408,6 +408,8 @@ Request notes:
 
 Visit `http://127.0.0.1:8000/` to see the project homepage with an introduction and API usage examples. The homepage is a static HTML file located at `static/index.html`, styled with TailwindCSS v4, Remix Icon, and Google Fonts (all loaded via CDN).
 
+When using Docker Compose, `docker-compose.yml` mounts the repository's `static/` directory read-only to `/static` inside the container (the runtime image's working directory is `/`), so the homepage works. Self-hosted images without that mount will return 404 for `/`.
+
 ## API test examples, see the `test_api.py` file for complete tests
 
 ```python
@@ -532,6 +534,7 @@ Key points of the compose file:
 - `platform: linux/amd64` — the official image is only published for this architecture; Apple Silicon runs it under emulation.
 - `restart: unless-stopped` — restart automatically after a crash or host reboot.
 - `ports: 8000:8000` — map the container port to the host.
+- `volumes: ./static:/static:ro` — mount the homepage static files read-only. The runtime image's working directory is `/`, so it maps to `/static`; without it `/` returns 404.
 - `RUST_LOG: info` — log level for `tracing`.
 - `command` overrides the image default `--ocr --det --slide --mcp`; for example `["--only-mcp"]` keeps only MCP.
 
@@ -546,6 +549,8 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    volumes:
+      - ./static:/static:ro
     environment:
       RUST_LOG: info
     # command: ["--only-mcp"]
